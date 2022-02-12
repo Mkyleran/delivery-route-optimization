@@ -1,0 +1,6 @@
+
+.ipynb_checkpoints
+source/modules/credentials.py
+.virtual_documents
+*.pyc
+.DS_Store
