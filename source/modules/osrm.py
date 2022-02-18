@@ -1,4 +1,6 @@
 import pandas as pd
+import numpy as np
+import math
 import requests
 import time
 
@@ -233,6 +235,95 @@ class OSRM():
         print(time.time() - tick)
         return response
     
+    
+    def large_table(
+        self, 
+        locations,
+        # file_name: 'str | None'=None
+    ):
+        """
+        Calculates the distance and duration matrix using the OSRM table API
+        for more than 100 locations and save each to its own csv
+        
+        Parameters
+        ----------
+        locations: Dataframe
+        
+        Returns
+        -------
+        None
+        """
+        
+        num_locations = locations.shape[0]
+        
+        duration_matrix = np.empty((0, num_locations))
+        distance_matrix = np.empty((0, num_locations))
+        # duration_matrix = pd.DataFrame()
+        
+        ceiling = math.ceil(num_locations / 100)
+
+        tick = time.time()
+
+        for i in range(ceiling):
+            start_i = i * 100
+            end_i = start_i + 100
+
+            duration_row = np.empty((100, 0))
+            distance_row = np.empty((100, 0))
+            # row = pd.DataFrame()
+
+            if end_i > num_locations:
+                end_i = num_locations
+                duration_row = np.empty((num_locations - start_i, 0))
+                distance_row = np.empty((num_locations - start_i, 0))
+
+            for j in range(ceiling):
+                start_j = j * 100
+                end_j = start_j + 100
+
+                if end_j > num_locations:
+                    end_j = num_locations
+
+                osrm_response = self.table(
+                    coordinates=locations,
+                    sources=list(range(start_i, end_i)),
+                    destinations=list(range(start_j, end_j)),
+                    annotations=['duration', 'distance']
+                )
+
+                duration_row = np.c_[duration_row, np.array(osrm_response.json()['durations'])]
+                distance_row = np.c_[distance_row, np.array(osrm_response.json()['distances'])]
+                # row = pd.concat(
+                #     objs=[row, pd.DataFrame(osrm_response.json()['durations'])],
+                #     axis=1,
+                #     ignore_index=True
+                # )
+            duration_matrix = np.r_[duration_matrix, duration_row]
+            distance_matrix = np.r_[distance_matrix, distance_row]
+            # duration_matrix = pd.concat(
+            #     objs=[duration_matrix, row],
+            #     axis=0,
+            #     ignore_index=True
+            # )
+        print('time', time.time() - tick)
+        
+        np.savetxt(
+            fname=f'duration_matrix_{time.strftime("%Y%m%d-%H%M%S")}.csv',
+            X=duration_matrix,
+            fmt='%10.1f',
+            delimiter=','
+        )
+        np.savetxt(
+            fname=f'distance_matrix_{time.strftime("%Y%m%d-%H%M%S")}.csv',
+            X=distance_matrix,
+            fmt='%10.1f',
+            delimiter=','
+        )
+        # duration_matrix.to_csv('duration_matrix.csv', index=False)
+        
+        return
+
+    
     def match(
         self,
         coordinates,
@@ -348,7 +439,7 @@ class OSRM():
         steps: true, false (default)
             Returned route instructions for each trip
         annotations: true, false (default), nodes, distance, duration, 
-            datasources,weight, speed
+            datasources, weight, speed
             Returns additional metadata for each coordinate along the route 
             geometry.
         geometries: polyline (default), polyline6, geojson
