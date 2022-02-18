@@ -82,8 +82,15 @@ class OSRM():
         params
     ):
         """
+        Parameters
+        ----------
         params: locals()
-            Dictionary of function parameters 
+            Dictionary of function parameters
+        
+        Returns
+        -------
+        params: dictionary
+            Parsed parameters
         """
         
         # Remove forbidden keys
@@ -105,6 +112,34 @@ class OSRM():
                     params[k] = ','.join([str(_) for _ in v])
 
         return params
+    
+    
+    def parse_coordinates(
+        self,
+        coordinates
+    ):
+        """
+        Parse coordinate columns from dataframe into OSRM coordinate string
+        format.
+        Example: longitude,latitude;longitude,latitude ...
+        
+        Parameters
+        ----------
+        coordinates: Dataframe
+            Contains columns ['latitude', 'longitude']
+        
+        Returns
+        -------
+        coordinates: string
+        """
+        # Parse coordinates
+        coordinates = (
+            coordinates[['longitude', 'latitude']].astype(str)
+            .agg(','.join, axis=1)
+            .str.cat(sep=';')
+        )
+        
+        return coordinates
     
     
     def route(
@@ -156,14 +191,11 @@ class OSRM():
         response: Requests response object
         """
         
+        # Parse parameters
         parameters = self.parse_parameters(params=locals())
         
         # Parse coordinates
-        coordinates = (
-            coordinates[['longitude', 'latitude']]
-            .agg(','.join, axis=1)
-            .str.cat(sep=';')
-        )
+        coordinates = self.parse_coordinates(coordinates)
 
         url = (f'{self.base_url}/route/{self.version}/{self.profile}/'
                + coordinates)
@@ -171,6 +203,7 @@ class OSRM():
         tick = time.time()
         response = requests.get(url=url, params=parameters)
         print(time.time() - tick)
+        
         return response
 
 
@@ -219,20 +252,19 @@ class OSRM():
         response: Requests response object
         """
 
+        # Parse parameters
         parameters = self.parse_parameters(params=locals())
         
-        coordinates = (
-            coordinates[['longitude', 'latitude']]
-            .agg(','.join, axis=1)
-            .str.cat(sep=';')
-        )
-
+        # Parse coordinates
+        coordinates = self.parse_coordinates(coordinates)
+        
         url = (f'{self.base_url}/table/{self.version}/{self.profile}/'
                + coordinates)
 
         tick = time.time()
         response = requests.get(url=url, params=parameters)
         print(time.time() - tick)
+        
         return response
     
     
@@ -242,7 +274,7 @@ class OSRM():
         # file_name: 'str | None'=None
     ):
         """
-        Calculates the distance and duration matrix using the OSRM table API
+        Calculate the distance and duration matrix using the OSRM table API
         for more than 100 locations and save each to its own csv
         
         Parameters
@@ -291,10 +323,17 @@ class OSRM():
                     annotations=['duration', 'distance']
                 )
 
-                duration_row = np.c_[duration_row, np.array(osrm_response.json()['durations'])]
-                distance_row = np.c_[distance_row, np.array(osrm_response.json()['distances'])]
+                duration_row = np.c_[
+                    duration_row, 
+                    np.array(osrm_response.json()['durations'])
+                ]
+                distance_row = np.c_[
+                    distance_row,
+                    np.array(osrm_response.json()['distances'])
+                ]
                 # row = pd.concat(
-                #     objs=[row, pd.DataFrame(osrm_response.json()['durations'])],
+                #    objs=[row, 
+                #          pd.DataFrame(osrm_response.json()['durations'])],
                 #     axis=1,
                 #     ignore_index=True
                 # )
@@ -385,13 +424,11 @@ class OSRM():
         response: Requests response object
         """
 
+       # Parse parameters
         parameters = self.parse_parameters(params=locals())
         
-        coordinates = (
-            coordinates[['longitude', 'latitude']]
-            .agg(','.join, axis=1)
-            .str.cat(sep=';')
-        )
+        # Parse coordinates
+        coordinates = self.parse_coordinates(coordinates)
 
         url = (f'{self.base_url}/match/{self.version}/{self.profile}/'
                + coordinates)
@@ -399,6 +436,7 @@ class OSRM():
         tick = time.time()
         response = requests.get(url=url, params=parameters)
         print(time.time() - tick)
+        
         return response
 
     
@@ -453,13 +491,11 @@ class OSRM():
         response: Requests response object
         """
 
+        # Parse parameters
         parameters = self.parse_parameters(params=locals())
         
-        coordinates = (
-            coordinates[['longitude', 'latitude']]
-            .agg(','.join, axis=1)
-            .str.cat(sep=';')
-        )
+        # Parse coordinates
+        coordinates = self.parse_coordinates(coordinates)
 
         url = (f'{self.base_url}/trip/{self.version}/{self.profile}/'
                + coordinates)
@@ -467,35 +503,58 @@ class OSRM():
         tick = time.time()
         response = requests.get(url=url, params=parameters)
         print(time.time() - tick)
+        
         return response
+        
+        
+    def tsp_polylines(
+        self,
+        routes,
+        source=None
+    ):
+        """
+        For a list of coordinates with route labels, solve the travelling salesman
+        problem for each route.
 
-    
-def osrm_call(service: 'int', coordinates):
-    # Example /{service}/{version}/{profile}/{coordinates}[.{format}]?option=value&option=value
-    api_url = 'http://127.0.0.1:8080/'
-    services = ['route', 'nearest', 'table', 'match', 'trip', 'tile']
+        Parameters
+        ----------
+        routes: Dataframe
+            Dataframe containing coordinates and route labels
+        start: 
+            Warehouse
 
-    coordinates = (
-        coordinates[['longitude', 'latitude']]
-        .agg(','.join, axis=1)
-        .str.cat(sep=';')
-    )
-    # options
-    approaches = ['curb', 'unrestricted']
+        Returns
+        -------
+        traces: Dataframe
+            Records represent routes, where the index is the route number. Route
+            features include polyline geometry, distance, duration, and
+            routability weight.
+            Weight is "how long this segment takes to traverse, in units (may 
+            differ from duration when artificial biasing is applied in the Lua 
+            profiles). ACTUAL ROUTING USES THIS VALUE."
+        """
 
-    url = api_url + services[service] + '/v1/driving/' + coordinates
+        # Add warehouse as source
+        if source is not None:
+            routes = pd.concat([source, routes], axis=0)
 
-    parameters = {
-        'steps': 'true',  # for route, trip service
-        'annotations': 'true'
-        # 'annotations': 'duration,distance',  # for table service
-        # 'geometries': 'geojson'
-    }
+        paths = pd.DataFrame()
 
-    tick = time.time()
-    r = requests.get(url=url, params=parameters)
-    print(time.time() - tick)
-    return r
+        for route in range(routes['route'].nunique()):
+            path = self.trip(
+                coordinates=routes[routes['route'] == route],
+                source='first',
+                overview='full'
+            )
+            paths = pd.concat(
+                [paths, pd.json_normalize(path.json(), record_path=['trips'])],
+                axis=0,
+                ignore_index=True
+            )
+        paths.drop(['legs', 'weight_name'], axis=1, inplace=True)
+
+        return paths
+
 
 if __name__ == '__main__':
     pass
