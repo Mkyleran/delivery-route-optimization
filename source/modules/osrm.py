@@ -507,7 +507,7 @@ class OSRM():
         return response
         
         
-    def tsp_polylines(
+    def tsp(
         self,
         routes,
         source=None
@@ -520,40 +520,73 @@ class OSRM():
         ----------
         routes: Dataframe
             Dataframe containing coordinates and route labels
-        start: 
+        start: Dataframe
             Warehouse
 
         Returns
         -------
-        traces: Dataframe
-            Records represent routes, where the index is the route number. Route
-            features include polyline geometry, distance, duration, and
-            routability weight.
-            Weight is "how long this segment takes to traverse, in units (may 
-            differ from duration when artificial biasing is applied in the Lua 
-            profiles). ACTUAL ROUTING USES THIS VALUE."
+        route_table: Dataframe
+            A dataframe of routes with the features:
+            geometry: polyline string
+            distance: meters float
+            duration: seconds float
+            waypoints: json object with feature 'waypoint_index' representing
+                the route sequence
+            stops: number of stops
+            weight: float
+                "how long this segment takes to traverse, in units (may differ
+                from duration when artificial biasing is applied in the Lua 
+                profiles). ACTUAL ROUTING USES THIS VALUE."
         """
-
-        # Add warehouse as source
-        if source is not None:
-            routes = pd.concat([source, routes], axis=0)
-
-        paths = pd.DataFrame()
+        
+        route_table = pd.DataFrame()
 
         for route in range(routes['route'].nunique()):
+            route_df = routes[routes['route'] == route]
+            # Stop count
+            stops = route_df.shape[0]
+
+            # Add warehouse as source
+            route_df = pd.concat([source, route_df], axis=0)
+
+            # Solve TSP
             path = self.trip(
-                coordinates=routes[routes['route'] == route],
+                coordinates=route_df[:100],  # TSP solvable for maximum 100 stops
+                roundtrip=True,
                 source='first',
+                destination='any',
                 overview='full'
             )
-            paths = pd.concat(
-                [paths, pd.json_normalize(path.json(), record_path=['trips'])],
+
+            # Extract trip attributes and waypoints
+            try:
+                # Geometry, distance, duration
+                attributes = pd.json_normalize(path.json(), record_path=['trips'])
+            except KeyError:
+                continue
+
+            # Waypoints
+            waypoints = pd.json_normalize(path.json())['waypoints']
+
+            path = pd.concat(
+                [attributes, waypoints],
+                axis=1
+            )
+
+            # Number of stops
+            path[['route', 'stops']] = [route, stops]
+
+            # Append route to table of routes
+            route_table = pd.concat(
+                [route_table, path],
                 axis=0,
                 ignore_index=True
             )
-        paths.drop(['legs', 'weight_name'], axis=1, inplace=True)
 
-        return paths
+        # Drop uneccessary columns
+        route_table.drop(['legs', 'weight_name'], axis=1, inplace=True)
+
+        return route_table
 
 
 if __name__ == '__main__':
