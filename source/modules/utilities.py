@@ -1,11 +1,15 @@
+from modules import credentials
+
 import pandas as pd
 import geopandas as gpd
 import polyline
 
+import plotly.express as px
+import plotly.graph_objects as go
+
 import googlemaps
 # Open Calgary API
 from sodapy import Socrata
-from modules import credentials
 
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import AgglomerativeClustering
@@ -61,6 +65,19 @@ YYC_STREET_TYPEs = {
     'WK': 'Walk',
     'WY': 'Way'
 }
+
+
+def load_data():
+    """
+    Load Open Calgary address data set
+    """
+    # Load saved sample file
+    add = pd.read_csv(
+        '../data/openYYCtestdata.csv',
+        usecols=['address', 'longitude', 'latitude']
+    )
+
+    return df_to_geodf(add)
 
 
 def polyline_to_geodf(geometry: 'str'):
@@ -221,6 +238,83 @@ def label_routes(
     pipe.fit(df)
 
     return pipe['clustering'].labels_
+
+
+def plot_routes(route_table, addresses, warehouse):
+    """
+    Plot routes with paths.
+    
+    Parameters
+    ----------
+    route_table: Dataframe
+        The output of OSRM.tsp_polylines()
+    
+    Returns
+    -------
+    None
+    
+    TODO
+    ----
+    - See if folium does a better job with plotting
+    - Route based colour schemes
+    """
+    
+    fig = go.Figure()
+    traces = []
+    
+    for i, route in route_table.iterrows():
+        # Plot route
+        t = polyline_to_geodf(route['geometry'])
+
+        fig.add_scattermapbox(
+            mode="lines",
+            lat=t.geometry.y,
+            lon=t.geometry.x,
+            name=f'Route {i + 1}', 
+            # fill='toself'
+        )
+
+        # Plot stops
+        waypoints = pd.json_normalize(route['waypoints'])
+        waypoints.drop(columns=['location', 'hint'], inplace=True)
+
+        c = addresses[['address', 'longitude', 'latitude']][addresses['route'] == i]
+        # Add warehouse as source
+        c = pd.concat([warehouse, c], axis=0)
+        c.reset_index(drop=True, inplace=True)
+
+        stops = pd.concat(
+            [
+                c,
+                waypoints[['waypoint_index', 'distance']]
+            ],
+            axis=1
+        )
+
+        stops = utilities.df_to_geodf(stops)
+    
+        fig2 = px.scatter_mapbox(
+            stops,
+            lat=stops.geometry.y,
+            lon=stops.geometry.x,
+            color='waypoint_index',
+            hover_name='waypoint_index',
+            hover_data=['address']
+        )
+        fig.add_trace(fig2.data[0])
+
+    fig.update_layout(
+        margin ={'l':0,'t':0,'b':0,'r':0},
+        mapbox = {
+            'style': "open-street-map",
+            'center': {'lon': -114.03, 'lat': 51.04},
+            'zoom': 8
+        },
+        coloraxis={'colorscale': 'rainbow'}
+    )
+
+    fig.show()
+    return
 
 
 if __name__ == '__main__':
