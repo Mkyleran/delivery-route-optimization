@@ -1,7 +1,32 @@
 import docker
+import os
 
 # Docker SDK for Python
 # [Documentation](https://docker-py.readthedocs.io/en/stable/index.html)
+
+def start_Docker_container(container: 'str'='upbeat_neumann'):
+    """
+    Start a Docker container
+    
+    Parameters
+    ----------
+    container: string
+        Name or ID of Docker container
+    
+    Returns
+    -------
+    container: Docker Container
+    """
+    client = docker.from_env()
+    
+    try:
+        container = client.containers.get(container)
+        container.start()
+        return container
+    except docker.errors.NotFound as e:
+        print(e)
+    
+    return
 
 # Open Source Routing Machine (OSRM)
 # https://hub.docker.com/r/osrm/osrm-backend
@@ -28,6 +53,7 @@ def initialize_ors_container():
     TODO:
     - fix user configuration
     - automate directory creation
+    - use os package to paths
     
     APIError: 500 Server Error for http+docker://localhost/v1.41/containers/ef7f928c3e4c606090463a099dbbc9436c15754673fbed28f6408ce6240f8049/start: Internal Server Error ("unable to find user ${UID}: no matching entries in passwd file")
     """
@@ -69,10 +95,6 @@ def initialize_ors_container():
     
     return container
 
-client = docker.from_env()
-container = client.containers.get('ors-app')
-container.start()
-container.stop()
 
 if __name__ == '__main__':
     pass
