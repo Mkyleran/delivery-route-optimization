@@ -53,7 +53,7 @@ def initialize_ors_container():
     TODO:
     - fix user configuration
     - automate directory creation
-    - use os package to paths
+    - use os package for paths
     
     APIError: 500 Server Error for http+docker://localhost/v1.41/containers/ef7f928c3e4c606090463a099dbbc9436c15754673fbed28f6408ce6240f8049/start: Internal Server Error ("unable to find user ${UID}: no matching entries in passwd file")
     """
@@ -62,6 +62,7 @@ def initialize_ors_container():
         detach=True,               # -d
         tty=True,                  # -t
         user='${UID}:${GID}',      # -u  Need to assign real user and group id numbers
+        # conda info >>> UID:GID : 501:20
         name='ors-app2',           # --name
         ports={'8080/tcp': 8080},  # -p
         volumes={                  # -v
