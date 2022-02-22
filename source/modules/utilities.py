@@ -67,6 +67,16 @@ YYC_STREET_TYPEs = {
 }
 
 
+def get_warehouse():
+    # Saved API result
+    warehouse = pd.DataFrame({
+        'latitude': {0: 51.1196913},
+        'longitude': {0: -114.0316978},
+        'address': {0: '24 AERO DR NE'}
+    })
+    return df_to_geodf(warehouse)
+
+
 def load_data():
     """
     Load Open Calgary address data set
@@ -240,6 +250,39 @@ def label_routes(
     return pipe['clustering'].labels_
 
 
+def parse_routes(route_table, addresses):
+    """
+    Add route waypoint details to address geodataframe
+    
+    Parameters
+    ----------
+    route_table: Dataframe
+        The output of OSRM.tsp_polylines()
+    addresses: Dataframe | GeoDataframe
+        Input addresses
+        
+    Returns
+    -------
+    a: Dataframe
+    """
+    a = pd.DataFrame()
+    
+    for i, route in route_table.iterrows():
+        route_addresses = addresses[addresses['route'] == i].copy()
+        
+        route_addresses['r_index'] = route_addresses.reset_index().index + 1
+        # ^ Note: +1 since the waypoint index includes the warehouse
+        
+        # Add waypoint index (route sequence)
+        waypoints = pd.json_normalize(route['waypoints'])
+        
+        t2 = pd.merge(route_addresses, waypoints['waypoint_index'],
+                     left_on='r_index', right_index=True)
+        a = pd.concat([a, t2])
+    
+    return a
+
+
 def plot_routes(route_table, addresses, warehouse):
     """
     Plot routes with paths.
@@ -264,45 +307,34 @@ def plot_routes(route_table, addresses, warehouse):
     
     for i, route in route_table.iterrows():
         # Plot route
-        t = polyline_to_geodf(route['geometry'])
+        t1 = polyline_to_geodf(route['geometry'])
 
         fig.add_scattermapbox(
             mode="lines",
-            lat=t.geometry.y,
-            lon=t.geometry.x,
-            name=f'Route {i + 1}', 
+            lat=t1.geometry.y,
+            lon=t1.geometry.x,
+            name=f'Route {i}', 
             # fill='toself'
         )
 
-        # Plot stops
-        waypoints = pd.json_normalize(route['waypoints'])
-        waypoints.drop(columns=['location', 'hint'], inplace=True)
-
-        c = addresses[['address', 'longitude', 'latitude']][addresses['route'] == i]
-        # Add warehouse as source
-        c = pd.concat([warehouse, c], axis=0)
-        c.reset_index(drop=True, inplace=True)
-
-        stops = pd.concat(
-            [
-                c,
-                waypoints[['waypoint_index', 'distance']]
-            ],
-            axis=1
-        )
-
-        stops = utilities.df_to_geodf(stops)
+    traces.append(px.scatter_mapbox(
+        addresses,
+        lat=addresses.geometry.y,
+        lon=addresses.geometry.x,
+        color='route',
+        hover_name='waypoint_index',
+        hover_data=['address']
+    ).data[0])
     
-        fig2 = px.scatter_mapbox(
-            stops,
-            lat=stops.geometry.y,
-            lon=stops.geometry.x,
-            color='waypoint_index',
-            hover_name='waypoint_index',
-            hover_data=['address']
-        )
-        fig.add_trace(fig2.data[0])
-
+    traces.append(px.scatter_mapbox(
+        warehouse,
+        lat=warehouse.geometry.y,
+        lon=warehouse.geometry.x,
+        hover_data=['address']
+    ).data[0])
+    
+    fig.add_traces(traces)
+    
     fig.update_layout(
         margin ={'l':0,'t':0,'b':0,'r':0},
         mapbox = {
