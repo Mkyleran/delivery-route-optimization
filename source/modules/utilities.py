@@ -40,6 +40,7 @@ YYC_STREET_TYPEs = {
     'HI': 'Highway',
     'HL': 'Hill',
     'IS': 'Island',
+    'LD': 'Landing',
     'LN': 'Lane',
     'LI': 'Link',
     'MR': 'Manor',
